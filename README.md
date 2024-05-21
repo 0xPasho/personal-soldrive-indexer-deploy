@@ -1,33 +1,14 @@
-# solana-example
+# Subsquid Indexer for Solana Drive
 
-This project shows how one can index Orca Exchange USDC-SOL swaps using Subsquid SDK.
+## Introduction
+This project sets up an indexer for Solana Drive using Subsquid, fetching data from the Solana blockchain, processing it, and storing it in a PostgreSQL database. The data includes information about files and users associated with Solana Drive.
 
-## About SDK
+## Prerequisites
+- Node.js
+- Docker
+- Docker Compose
 
-Subsquid SDK is a TypeScript ETL toolkit for blockchain data, that currently supports
-
-* Ethereum and everything Ethereum-like
-* [Substrate](https://substrate.io)-based chains
-* Solana.
-
-Subsquid SDK stands apart from the competition by
-
-* Being a toolkit (rather than an indexing app like TheGraph or Ponder)
-* Fast binary data codecs and type-safe access to decoded data  
-* Native support for sourcing the data from Subsquid Network.
-
-The latter is a key point, as Subsquid Network is a decentralized data lake and query engine, 
-that allows to granularly select and stream subset of block data to lightweight clients 
-while providing game changing performance over traditional RPC API.
-
-## Getting started
-
-### Prerequisites
-
-* Node.js (version 20.x and above)
-* Docker
-
-### Run indexer
+## Setup
 
 ```bash
 # Install dependencies
@@ -36,34 +17,35 @@ npm ci
 # Compile the project
 npx tsc
 
-# Launch Postgres database to store the data
+# Launch PostgreSQL database
 docker compose up -d
 
 # Apply database migrations to create the target schema
 npx squid-typeorm-migration apply
 
-# Run indexer
+# Run the indexer
 node -r dotenv/config lib/main.js
 
-# Checkout indexed swaps
+# Example database query
 docker exec "$(basename "$(pwd)")-db-1" psql -U postgres \
   -c "SELECT slot, from_token, to_token, from_amount, to_amount FROM exchange ORDER BY id LIMIT 10"
+
+# GraphQL Queries
+## Get all files
+curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -d '{"query": "{ getAllFiles { id slot timestamp file_id name weight file_parent_id cid typ from to } }"}'
+
+## Get file by file_id
+curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -d '{"query": "{ getFile(file_id: \"your_file_id\") { id slot timestamp file_id name weight file_parent_id cid typ from to } }"}'
+
+## Get all users
+curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -d '{"query": "{ getAllUsers { id user_solana did_public_address } }"}'
+
+## Get user by user_solana
+curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -d '{"query": "{ getUser(user_solana: \"your_user_solana\") { id user_solana did_public_address } }"}'
+
+## Get file by CID
+curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -d '{"query": "{ getFileByCID(CID: \"your_CID\") { id slot timestamp file_id name weight file_parent_id cid typ from to } }"}'
+
+## Get files by from and to
+curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -d '{"query": "{ getFilesByFromAndTo(from: \"your_from\", to: \"your_to\") { id slot timestamp file_id name weight file_parent_id cid typ } }"}'
 ```
-
-For further details please consult heavily commented [main.ts](./src/main.ts). 
-
-## Decoding binary data
-
-`@subsquid/borsh` package allows to easily define fast and type-safe codec for any Solana data structure.
-
-In the future we plan to develop robust code generation tools, 
-that would allow to create all relevant definitions from IDL files automatically.
-
-Meanwhile, [abi](./src/abi) module gives an example of how that might look like.
-
-## Disclaimer
-
-Solana support is in beta. 
-
-In particular, we expect to make Subsquid Network data ingestion at least 50 times faster.
-# indexer-soldrive

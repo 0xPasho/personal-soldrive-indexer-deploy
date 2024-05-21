@@ -1,15 +1,12 @@
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
 @Entity()
-export class Exchange {
+export class File {
     @PrimaryGeneratedColumn('uuid')
     id!: string;
 
     @Column()
     slot!: number;
-
-    @Column()
-    tx!: string;
 
     @Column()
     timestamp!: Date;

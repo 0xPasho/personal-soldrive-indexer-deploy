@@ -3,16 +3,14 @@ import { augmentBlock } from '@subsquid/solana-objects';
 import { DataSourceBuilder, SolanaRpcClient } from '@subsquid/solana-stream';
 import { TypeormDatabase } from '@subsquid/typeorm-store';
 import { ApolloServer, gql } from 'apollo-server';
-import { Exchange } from './model';
 import { createConnection, getConnection } from 'typeorm';
+import { File } from './model/file.model';
+import { User } from './model/user.model';
 
-const PROGRAM_ID = '4v3uT7y6RHLCJLSwAjWg59tJFhZG1rpa6Q9u6NsZrgUu';
+const FILE_PROGRAM_ID = '4v3uT7y6RHLCJLSwAjWg59tJFhZG1rpa6Q9u6NsZrgUu';
+const USER_PROGRAM_ID = '6QnLoMCJV2quAy4GuEsDzH7ubN5vW9NN9zwVNgXNEhYo';
 
-// First, we create a DataSource component that defines where to get the data and what data to get
 const dataSource = new DataSourceBuilder()
-    // Provide Subsquid Network Gateway URL (optional)
-    // .setGateway('https://v2.archive.subsquid.io/network/solana-mainnet')
-    // Set the RPC endpoint
     .setRpc(process.env.SOLANA_NODE == null ? undefined : {
         client: new SolanaRpcClient({
             url: process.env.SOLANA_NODE,
@@ -20,9 +18,7 @@ const dataSource = new DataSourceBuilder()
         }),
         strideConcurrency: 1
     })
-    // Specify the range of blocks to fetch using the slot number
-    .setBlockRange({ from: 280_243_678 })
-    // Select specific fields from the blocks
+    .setBlockRange({ from: 280_271_861 })
     .setFields({
         block: {
             slot: true,
@@ -63,19 +59,17 @@ const dataSource = new DataSourceBuilder()
             rewardType: true
         }
     })
-    // Add instruction selection criteria
     .addInstruction({
         where: {
-            programId: [PROGRAM_ID]
+            programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID]
         },
         include: {
             transaction: true
         }
     })
-    // Add log selection criteria
     .addLog({
         where: {
-            programId: [PROGRAM_ID]
+            programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID]
         },
         include: {
             instruction: false
@@ -85,36 +79,47 @@ const dataSource = new DataSourceBuilder()
 
 console.log('Data source built.');
 
-// Function to parse metadata from log messages
-function parseMetadata(logMessages: string[]): Partial<Exchange> | null {
-    console.log("Log Messages:", logMessages);  // Log all messages to inspect their format
-    const metadata: Partial<Exchange> = {};
-    const metaRegex = /^Deserialized metadata: TokenMetadata \{ (.*) \}$/;
-    for (const log of logMessages) {
-        const match = log.match(metaRegex);
-        if (match) {
-            const parts = match[1].split(", ");
-            parts.forEach(part => {
-                const [key, value] = part.split(": ");
-                (metadata as any)[key.trim()] = value.replace(/"/g, '');
-            });
-            return metadata;
-        }
+function parseMetadata(metadataString: string | undefined): any {
+    console.log('Parsing metadata string:', metadataString);
+    if (!metadataString) {
+        console.error('Metadata string is undefined');
+        return null;
     }
-    return null;  // Return null if no metadata is found
+    const metadata: any = {};
+    const parts = metadataString
+        .replace("Program log: Deserialized metadata: ", "")
+        .replace("Deserialized metadata: ", "")
+        .replace("UserMetadata { ", "")
+        .replace(" }", "")
+        .replace("{ ", "")
+        .split(", ");
+    
+    console.log('Metadata parts:', parts);
+
+    parts.forEach((part, index) => {
+        console.log(`Processing part ${index}:`, part);
+        const [key, value] = part.split(": ");
+        if (!key || !value) {
+            console.error(`Invalid part: ${part}`);
+            return;
+        }
+        console.log(`Key: ${key}, Value: ${value}`);
+        metadata[key.trim()] = value.replace(/"/g, "").trim();
+    });
+
+    console.log('Parsed metadata:', metadata);
+    return metadata;
 }
 
-// Create the database instance
 const database = new TypeormDatabase();
 console.log('Database configured.');
 
-// Start data processing
 run(dataSource, database, async ctx => {
     console.log('Entered run function...');
 
-    // Use augmentBlock to enrich block items
     let blocks = ctx.blocks.map(augmentBlock);
-    let metadataRecords: Exchange[] = [];
+    let fileRecords: File[] = [];
+    let userRecords: User[] = [];
 
     console.log(`Fetched ${blocks.length} blocks`);
     for (let block of blocks) {
@@ -129,43 +134,61 @@ run(dataSource, database, async ctx => {
 
         for (let log of block.logs) {
             console.log(`Processing log from program ID ${log.programId}...`);
+            console.log('Log structure:', JSON.stringify(log, null, 2)); // Log the structure of each log
 
-            if (log.programId === PROGRAM_ID) {
-                const metadata = parseMetadata(log.message.split('\n'));
-                if (metadata) {
-                    console.log('Metadata parsed:', metadata);
-                    const exchange = new Exchange();
-                    exchange.slot = block.header.slot;
-                    exchange.tx = log.transaction?.signatures[0] || '';
-                    exchange.timestamp = new Date(block.header.timestamp * 1000);
-                    Object.assign(exchange, metadata);
-                    metadataRecords.push(exchange);
-                } else {
-                    console.log('No metadata found in log.');
+            const metadata = parseMetadata(log.message);
+            if (metadata) {
+                console.log('Metadata parsed:', metadata);
+
+                if (log.programId === FILE_PROGRAM_ID) {
+                    // if (metadata.file_id && metadata.name && metadata.weight !== undefined && metadata.typ) {
+                        const file = new File();
+                        file.slot = block.header.slot;
+                        file.timestamp = new Date(block.header.timestamp * 1000);
+                        Object.assign(file, metadata);
+                        fileRecords.push(file);
+                    // } else {
+                    //     console.log('Incomplete File metadata, skipping record:', metadata);
+                    // }
+                } else if (log.programId === USER_PROGRAM_ID) {
+                    if (metadata.user_solana && metadata.did_public_address) {
+                        const user = new User();
+                        user.user_solana = metadata.user_solana;
+                        user.slot =block.header.slot;
+                        user.did_public_address = metadata.did_public_address;
+                        userRecords.push(user);
+                    } else {
+                        console.log('Incomplete User metadata, skipping record:', metadata);
+                    }
                 }
             } else {
-                console.log('Log does not match program ID');
+                console.log('No metadata found in log.');
             }
         }
     }
 
     console.log('Inserting metadata into the database...');
 
-    console.log(metadataRecords);
+    console.log('File Records:', fileRecords);
+    console.log('User Records:', userRecords);
 
-    await ctx.store.insert(metadataRecords);
+    if (fileRecords.length > 0) {
+        await ctx.store.insert(fileRecords);
+    }
+    if (userRecords.length > 0) {
+        await ctx.store.insert(userRecords);
+    }
+    
     console.log('Data processing completed.');
 });
 
 console.log('After calling run function...');
 console.log('Script execution finished.');
 
-// GraphQL schema definition
 const typeDefs = gql`
-  type Exchange {
+  type File {
     id: ID!
     slot: Int!
-    tx: String!
     timestamp: String!
     file_id: String
     name: String
@@ -173,33 +196,64 @@ const typeDefs = gql`
     file_parent_id: String
     cid: String
     typ: String
+    from: String
+    to: String
+  }
+
+  type User {
+    id: ID!
+    user_solana: String!
+    did_public_address: String!
   }
 
   type Query {
-    getAllExchanges: [Exchange]
-    getExchange(id: ID!): Exchange
+    getAllFiles: [File]
+    getFile(file_id: String!): File
+    getAllUsers: [User]
+    getUser(user_solana: String!): User
+    getFileByCid(cid: String!): File
+    getFilesByFromAndTo(from: String!, to: String): [File]
   }
 `;
 
-// Resolvers
 const resolvers = {
     Query: {
-        getAllExchanges: async () => {
-            const connection = getConnection();
-            const exchangeRepository = connection.getRepository(Exchange);
-            return await exchangeRepository.find();
-        },
-        getExchange: async (_: any, { id }: { id: string }) => {
-            const connection = getConnection();
-            const exchangeRepository = connection.getRepository(Exchange);
-            return await exchangeRepository.findOne({ where: { id } });
-        },
+      getAllFiles: async () => {
+        const connection = getConnection();
+        const fileRepository = connection.getRepository(File);
+        return await fileRepository.find();
+      },
+      getFile: async (_: any, { file_id }: { file_id: string }) => {
+        const connection = getConnection();
+        const fileRepository = connection.getRepository(File);
+        return await fileRepository.findOne({ where: { file_id } });
+      },
+      getAllUsers: async () => {
+        const connection = getConnection();
+        const userRepository = connection.getRepository(User);
+        return await userRepository.find();
+      },
+      getUser: async (_: any, { user_solana }: { user_solana: string }) => {
+        const connection = getConnection();
+        const userRepository = connection.getRepository(User);
+        return await userRepository.findOne({ where: { user_solana } });
+      },
+      getFileByCid: async (_: any, { cid }: { cid: string }) => {
+        const connection = getConnection();
+        const fileRepository = connection.getRepository(File);
+        return await fileRepository.findOne({ where: { cid } });
+      },
+      getFilesByFromAndTo: async (_: any, { from, to }: { from: string, to: string }) => {
+        const connection = getConnection();
+        const fileRepository = connection.getRepository(File);
+        const whereCondition = to ? { from, to } : { from };
+        return await fileRepository.find({ where: whereCondition });
+      },
     },
-};
+  };
+  
 
-// Initialize GraphQL server
 async function startServer() {
-    // Establish the TypeORM connection
     await createConnection({
         type: 'postgres',
         host: process.env.DB_HOST || 'localhost',
@@ -207,7 +261,7 @@ async function startServer() {
         username: process.env.DB_USER,
         password: process.env.DB_PASS,
         database: process.env.DB_NAME,
-        entities: [Exchange],
+        entities: [File, User],
         synchronize: true,
         logging: false,
     });

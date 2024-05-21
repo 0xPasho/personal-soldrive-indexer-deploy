@@ -1,1 +1,3 @@
-export * from './exchange.model'
+export * from './file.model'
+export * from './user.model'
+
