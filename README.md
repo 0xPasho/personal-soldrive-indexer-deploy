@@ -20,15 +20,14 @@ npx tsc
 # Launch PostgreSQL database
 docker compose up -d
 
+
+# Create database migrations to create the target schema
+npx squid-typeorm-migration apply
 # Apply database migrations to create the target schema
 npx squid-typeorm-migration apply
 
 # Run the indexer
 node -r dotenv/config lib/main.js
-
-# Example database query
-docker exec "$(basename "$(pwd)")-db-1" psql -U postgres \
-  -c "SELECT slot, from_token, to_token, from_amount, to_amount FROM exchange ORDER BY id LIMIT 10"
 
 # GraphQL Queries
 ## Get all files
@@ -48,4 +47,4 @@ curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -
 
 ## Get files by from and to
 curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -d '{"query": "{ getFilesByFromAndTo(from: \"your_from\", to: \"your_to\") { id slot timestamp file_id name weight file_parent_id cid typ } }"}'
-```
+```curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash

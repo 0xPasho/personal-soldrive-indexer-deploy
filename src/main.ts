@@ -10,15 +10,16 @@ import { User } from './model/user.model';
 const FILE_PROGRAM_ID = '4v3uT7y6RHLCJLSwAjWg59tJFhZG1rpa6Q9u6NsZrgUu';
 const USER_PROGRAM_ID = '6QnLoMCJV2quAy4GuEsDzH7ubN5vW9NN9zwVNgXNEhYo';
 
+
 const dataSource = new DataSourceBuilder()
     .setRpc(process.env.SOLANA_NODE == null ? undefined : {
         client: new SolanaRpcClient({
             url: process.env.SOLANA_NODE,
-            rateLimit: 100 // requests per sec
+            rateLimit: 10 // requests per sec
         }),
         strideConcurrency: 1
     })
-    .setBlockRange({ from: 280_271_861 })
+    .setBlockRange({ from: 278_927_805 })
     .setFields({
         block: {
             slot: true,
