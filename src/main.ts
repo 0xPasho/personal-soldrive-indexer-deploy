@@ -3,7 +3,7 @@ import { augmentBlock } from "@subsquid/solana-objects";
 import { DataSourceBuilder, SolanaRpcClient } from "@subsquid/solana-stream";
 import { TypeormDatabase } from "@subsquid/typeorm-store";
 import { ApolloServer, gql } from "apollo-server";
-import { createConnection, getConnection } from "typeorm";
+import { Not, createConnection, getConnection } from "typeorm";
 import { File } from "./model/file.model";
 import { User } from "./model/user.model";
 
@@ -267,6 +267,11 @@ const typeDefs = gql`
     did_public_address: String!
   }
 
+  type UserSubscription {
+    id: ID!
+    timestamp: Int!
+  }
+
   type MutationResult {
     result: Boolean
   }
@@ -276,8 +281,9 @@ const typeDefs = gql`
     getFile(file_id: String!): File
     getAllUsers: [User]
     getUser(user_solana: String!): User
+    getUserSubscriptionByWallet(walletAddress: String!): UserSubscription
     getFileByCid(cid: String!): File
-    getFilesByFromAndTo(from: String!, to: String): [File]
+    getFilesByFromAndTo(from: String, to: String): [File]
     manualSyncFileCreation(
       file_id: String
       name: String
@@ -317,6 +323,15 @@ const resolvers = {
       const userRepository = connection.getRepository(User);
       return await userRepository.findOne({ where: { user_solana } });
     },
+    getUserSubscriptionByWallet: async (
+      _: any,
+      { walletAddress }: { walletAddress: string }
+    ) => {
+      return {
+        id: "test-id",
+        timestamp: 199,
+      };
+    },
     getFileByCid: async (_: any, { cid }: { cid: string }) => {
       const connection = getConnection();
       const fileRepository = connection.getRepository(File);
@@ -324,11 +339,21 @@ const resolvers = {
     },
     getFilesByFromAndTo: async (
       _: any,
-      { from, to }: { from: string; to: string }
+      { from, to }: { from?: string; to?: string }
     ) => {
       const connection = getConnection();
       const fileRepository = connection.getRepository(File);
-      const whereCondition = to ? { from, to } : { from };
+      let whereCondition = {};
+      if (from && to) {
+        whereCondition = { from, to };
+      } else if (from) {
+        whereCondition = { from };
+      } else {
+        // all registry with "to" address
+        // will have the same address as from
+        // when the file is uploading to its own drive
+        whereCondition = { to, from: Not(to) };
+      }
       return await fileRepository.find({ where: whereCondition });
     },
     manualSyncFileCreation: async (
