@@ -130,16 +130,40 @@ async function isUserAlreadyInserted(walletAddress: string) {
   return !!foundUser?.id;
 }
 
-async function isFileAlreadyInserted(cid: string) {
-  if (!cid) return false;
+async function isFileAlreadyInserted({
+  cid,
+  file_parent_id,
+  typ,
+  name,
+}: {
+  cid: string;
+  file_parent_id?: string;
+  typ?: string;
+  name?: string;
+}) {
   const connection = getConnection();
   const fileRepository = connection.getRepository(File);
+
+  // folder don't have cid, that's why needs other checks
+  if (typ === "folder") {
+    const foundFolder = await fileRepository.findOne({
+      where: {
+        file_parent_id,
+        name,
+        slot: 0,
+        typ: "folder", // important, to avoid folders(they don't have cid)
+      },
+    });
+    return { id: foundFolder?.id };
+  }
+
   const foundFile = await fileRepository.findOne({
     where: {
       cid,
+      typ: "file", // important, to avoid folders(they don't have cid)
     },
   });
-  return !!foundFile?.id;
+  return { id: foundFile?.id };
 }
 
 run(dataSource, database, async (ctx) => {
@@ -169,7 +193,7 @@ run(dataSource, database, async (ctx) => {
         console.log("Metadata parsed:", metadata);
 
         if (log.programId === FILE_PROGRAM_ID) {
-          const fileAlreadyCreated = await isFileAlreadyInserted(metadata.cid);
+          const fileAlreadyCreated = await isFileAlreadyInserted(metadata);
           if (!fileAlreadyCreated) {
             // if (metadata.file_id && metadata.name && metadata.weight !== undefined && metadata.typ) {
             const file = new File();
@@ -177,6 +201,7 @@ run(dataSource, database, async (ctx) => {
             file.timestamp = new Date(block.header.timestamp * 1000);
             Object.assign(file, metadata);
             fileRecords.push(file);
+          } else {
           }
           // } else {
           //     console.log('Incomplete File metadata, skipping record:', metadata);
