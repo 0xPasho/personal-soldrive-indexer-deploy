@@ -22,8 +22,8 @@ docker compose up -d
 
 
 # Create database migrations to create the target schema
-npx squid-typeorm-migration apply
-# Apply database migrations to create the target schema
+npx squid-typeorm-migration generate
+# Apply database migrations to apply the target schema
 npx squid-typeorm-migration apply
 
 # Run the indexer

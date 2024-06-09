@@ -6,241 +6,263 @@ import { ApolloServer, gql } from "apollo-server";
 import { Not, createConnection, getConnection } from "typeorm";
 import { File } from "./model/file.model";
 import { User } from "./model/user.model";
+import { Suscription } from "./model/suscription.model";
+
 
 const FILE_PROGRAM_ID = "4v3uT7y6RHLCJLSwAjWg59tJFhZG1rpa6Q9u6NsZrgUu";
 const USER_PROGRAM_ID = "6QnLoMCJV2quAy4GuEsDzH7ubN5vW9NN9zwVNgXNEhYo";
+const SUSCRIBE_ID = "DQozU1hdPhGKPPL3dWonTmfe6w6uydqudrbspmkpfaVW";
+
 
 const dataSource = new DataSourceBuilder()
-  .setRpc(
-    process.env.SOLANA_NODE == null
-      ? undefined
-      : {
-          client: new SolanaRpcClient({
-            url: process.env.SOLANA_NODE,
-            rateLimit: 10, // requests per sec
-          }),
-          strideConcurrency: 1,
-        }
-  )
-  .setBlockRange({ from: 291_827_457 })
-  .setFields({
-    block: {
-      slot: true,
-      parentSlot: true,
-      timestamp: true,
-    },
-    transaction: {
-      signatures: true,
-      err: true,
-    },
-    instruction: {
-      programId: true,
-      accounts: true,
-      data: true,
-      isCommitted: true,
-    },
-    log: {
-      programId: true,
-      kind: true,
-      message: true,
-    },
-    balance: {
-      pre: true,
-      post: true,
-    },
-    tokenBalance: {
-      preMint: true,
-      preDecimals: true,
-      preOwner: true,
-      preAmount: true,
-      postMint: true,
-      postDecimals: true,
-      postOwner: true,
-      postAmount: true,
-    },
-    reward: {
-      lamports: true,
-      rewardType: true,
-    },
-  })
-  .addInstruction({
-    where: {
-      programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID],
-    },
-    include: {
-      transaction: true,
-    },
-  })
-  .addLog({
-    where: {
-      programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID],
-    },
-    include: {
-      instruction: false,
-    },
-  })
-  .build();
+    .setRpc(
+        process.env.SOLANA_NODE == null
+            ? undefined
+            : {
+                client: new SolanaRpcClient({
+                    url: process.env.SOLANA_NODE,
+                    rateLimit: 10, // requests per sec
+                }),
+                strideConcurrency: 1,
+            }
+    )
+    .setBlockRange({ from: 292_878_498 })
+    .setFields({
+        block: {
+            slot: true,
+            parentSlot: true,
+            timestamp: true,
+        },
+        transaction: {
+            signatures: true,
+            err: true,
+        },
+        instruction: {
+            programId: true,
+            accounts: true,
+            data: true,
+            isCommitted: true,
+        },
+        log: {
+            programId: true,
+            kind: true,
+            message: true,
+        },
+        balance: {
+            pre: true,
+            post: true,
+        },
+        tokenBalance: {
+            preMint: true,
+            preDecimals: true,
+            preOwner: true,
+            preAmount: true,
+            postMint: true,
+            postDecimals: true,
+            postOwner: true,
+            postAmount: true,
+        },
+        reward: {
+            lamports: true,
+            rewardType: true,
+        },
+    })
+    .addInstruction({
+        where: {
+            programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID, SUSCRIBE_ID],
+        },
+        include: {
+            transaction: true,
+        },
+    })
+    .addLog({
+        where: {
+            programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID, SUSCRIBE_ID],
+        },
+        include: {
+            instruction: false,
+        },
+    })
+    .build();
 
 console.log("Data source built.");
 
 function parseMetadata(metadataString: string | undefined): any {
-  console.log("Parsing metadata string:", metadataString);
-  if (!metadataString) {
-    console.error("Metadata string is undefined");
-    return null;
-  }
-  const metadata: any = {};
-  const parts = metadataString
-    .replace("Program log: Deserialized metadata: ", "")
-    .replace("Deserialized metadata: ", "")
-    .replace("UserMetadata { ", "")
-    .replace(" }", "")
-    .replace("{ ", "")
-    .split(", ");
-
-  console.log("Metadata parts:", parts);
-
-  parts.forEach((part, index) => {
-    console.log(`Processing part ${index}:`, part);
-    const [key, value] = part.split(": ");
-    if (!key || !value) {
-      console.error(`Invalid part: ${part}`);
-      return;
+    console.log("Parsing metadata string:", metadataString);
+    if (!metadataString) {
+        console.error("Metadata string is undefined");
+        return null;
     }
-    console.log(`Key: ${key}, Value: ${value}`);
-    metadata[key.trim()] = value.replace(/"/g, "").trim();
-  });
+    const metadata: any = {};
+    const parts = metadataString
+        .replace("Program log: Deserialized metadata: ", "")
+        .replace("Deserialized metadata: ", "")
+        .replace("UserMetadata { ", "")
+        .replace(" }", "")
+        .replace("{ ", "")
+        .split(", ");
 
-  console.log("Parsed metadata:", metadata);
-  return metadata;
+    console.log("Metadata parts:", parts);
+
+    parts.forEach((part, index) => {
+        console.log(`Processing part ${index}:`, part);
+        const [key, value] = part.split(": ");
+        if (!key || !value) {
+            console.error(`Invalid part: ${part}`);
+            return;
+        }
+        console.log(`Key: ${key}, Value: ${value}`);
+        metadata[key.trim()] = value.replace(/"/g, "").trim();
+    });
+
+    console.log("Parsed metadata:", metadata);
+    return metadata;
 }
 
 const database = new TypeormDatabase();
 console.log("Database configured.");
 
 async function isUserAlreadyInserted(walletAddress: string) {
-  if (!walletAddress) return false;
-  const connection = getConnection();
-  const userRepository = connection.getRepository(User);
-  const foundUser = await userRepository.findOne({
-    where: {
-      user_solana: walletAddress,
-    },
-  });
-  return !!foundUser?.id;
+    if (!walletAddress) return false;
+    const connection = getConnection();
+    const userRepository = connection.getRepository(User);
+    const foundUser = await userRepository.findOne({
+        where: {
+            user_solana: walletAddress,
+        },
+    });
+    return !!foundUser?.id;
 }
 
 async function isFileAlreadyInserted({
-  cid,
-  file_parent_id,
-  typ,
-  name,
+    cid,
+    file_parent_id,
+    typ,
+    name,
 }: {
-  cid: string;
-  file_parent_id?: string;
-  typ?: string;
-  name?: string;
+    cid: string;
+    file_parent_id?: string;
+    typ?: string;
+    name?: string;
 }) {
-  const connection = getConnection();
-  const fileRepository = connection.getRepository(File);
+    const connection = getConnection();
+    const fileRepository = connection.getRepository(File);
 
-  // folder don't have cid, that's why needs other checks
-  if (typ === "folder") {
-    const foundFolder = await fileRepository.findOne({
-      where: {
-        file_parent_id,
-        name,
-        slot: 0,
-        typ: "folder", // important, to avoid folders(they don't have cid)
-      },
+    // folder don't have cid, that's why needs other checks
+    if (typ === "folder") {
+        const foundFolder = await fileRepository.findOne({
+            where: {
+                file_parent_id,
+                name,
+                slot: 0,
+                typ: "folder", // important, to avoid folders(they don't have cid)
+            },
+        });
+        return { id: foundFolder?.id };
+    }
+
+    const foundFile = await fileRepository.findOne({
+        where: {
+            cid,
+            typ: "file", // important, to avoid folders(they don't have cid)
+        },
     });
-    return { id: foundFolder?.id };
-  }
-
-  const foundFile = await fileRepository.findOne({
-    where: {
-      cid,
-      typ: "file", // important, to avoid folders(they don't have cid)
-    },
-  });
-  return { id: foundFile?.id };
+    return { id: foundFile?.id };
 }
 
 run(dataSource, database, async (ctx) => {
-  console.log("Entered run function...");
+    console.log("Entered run function...");
 
-  let blocks = ctx.blocks.map(augmentBlock);
-  let fileRecords: File[] = [];
-  let userRecords: User[] = [];
+    let blocks = ctx.blocks.map(augmentBlock);
+    let fileRecords: File[] = [];
+    let userRecords: User[] = [];
+    let suscriptions: Suscription[] = [];
 
-  console.log(`Fetched ${blocks.length} blocks`);
-  for (let block of blocks) {
-    console.log(`Processing block ${block.header.slot}...`);
-    console.log("Block structure:", JSON.stringify(block, null, 2)); // Log the structure of each block
 
-    if (block.logs.length === 0) {
-      console.log(`Block ${block.header.slot} has no logs.`);
-    } else {
-      console.log(`Block ${block.header.slot} has ${block.logs.length} logs.`);
-    }
+    console.log(`Fetched ${blocks.length} blocks`);
+    for (let block of blocks) {
+        console.log(`Processing block ${block.header.slot}...`);
+        console.log("Block structure:", JSON.stringify(block, null, 2)); // Log the structure of each block
 
-    for (let log of block.logs) {
-      console.log(`Processing log from program ID ${log.programId}...`);
-      console.log("Log structure:", JSON.stringify(log, null, 2)); // Log the structure of each log
-
-      const metadata = parseMetadata(log.message);
-      if (metadata) {
-        console.log("Metadata parsed:", metadata);
-
-        if (log.programId === FILE_PROGRAM_ID) {
-          const fileAlreadyCreated = await isFileAlreadyInserted(metadata);
-          if (!fileAlreadyCreated) {
-            // if (metadata.file_id && metadata.name && metadata.weight !== undefined && metadata.typ) {
-            const file = new File();
-            file.slot = block.header.slot;
-            file.timestamp = new Date(block.header.timestamp * 1000);
-            Object.assign(file, metadata);
-            fileRecords.push(file);
-          } else {
-          }
-          // } else {
-          //     console.log('Incomplete File metadata, skipping record:', metadata);
-          // }
-        } else if (log.programId === USER_PROGRAM_ID) {
-          if (metadata.user_solana && metadata.did_public_address) {
-            const userAlreadyCreated = await isUserAlreadyInserted(
-              metadata.did_public_address
-            );
-            if (!userAlreadyCreated) {
-              const user = new User();
-              user.user_solana = metadata.user_solana;
-              user.slot = block.header.slot;
-              user.did_public_address = metadata.did_public_address;
-              userRecords.push(user);
-            }
-          } else {
-            console.log("Incomplete User metadata, skipping record:", metadata);
-          }
+        if (block.logs.length === 0) {
+            console.log(`Block ${block.header.slot} has no logs.`);
+        } else {
+            console.log(`Block ${block.header.slot} has ${block.logs.length} logs.`);
         }
-      } else {
-        console.log("No metadata found in log.");
-      }
+
+        for (let log of block.logs) {
+            console.log(`Processing log from program ID ${log.programId}...`);
+            console.log("Log structure:", JSON.stringify(log, null, 2)); // Log the structure of each log
+
+            const metadata = parseMetadata(log.message);
+            if (metadata) {
+                console.log("Metadata parsed:", metadata);
+
+                if (log.programId === FILE_PROGRAM_ID) {
+                    const fileAlreadyCreated = await isFileAlreadyInserted(metadata);
+                    if (!fileAlreadyCreated) {
+                        // if (metadata.file_id && metadata.name && metadata.weight !== undefined && metadata.typ) {
+                        const file = new File();
+                        file.slot = block.header.slot;
+                        file.timestamp = new Date(block.header.timestamp * 1000);
+                        Object.assign(file, metadata);
+                        fileRecords.push(file);
+                    } else {
+                    }
+                    // } else {
+                    //     console.log('Incomplete File metadata, skipping record:', metadata);
+                    // }
+                } else if (log.programId === USER_PROGRAM_ID) {
+                    if (metadata.user_solana && metadata.did_public_address) {
+                        const userAlreadyCreated = await isUserAlreadyInserted(
+                            metadata.did_public_address
+                        );
+                        if (!userAlreadyCreated) {
+                            const user = new User();
+                            user.user_solana = metadata.user_solana;
+                            user.slot = block.header.slot;
+                            user.did_public_address = metadata.did_public_address;
+                            userRecords.push(user);
+                        }
+                    } else {
+                        console.log("Incomplete User metadata, skipping record:", metadata);
+                    }
+                } else if (log.programId === SUSCRIBE_ID ) {
+
+                    if(metadata.Receiver === '6aCLHeb1RS5t1LXNLnvFwP5F4B44ygaUv5PAsE7QEQ57' )   {
+                        const suscription = new Suscription();
+                        suscription.user = metadata.Depositor;
+                        suscription.timestamp = new Date(metadata.Timestamp * 1000);
+                        suscriptions.push(suscription);
+                    }                 
+
+                }
+
+            } else {
+                console.log("No metadata found in log.");
+            }
+        }
     }
-  }
 
-  console.log("Inserting metadata into the database...");
+    console.log("Inserting metadata into the database...");
 
-  console.log("File Records:", fileRecords);
-  console.log("User Records:", userRecords);
+    console.log("File Records:", fileRecords);
+    console.log("User Records:", userRecords);
+    console.log("Suscriptions Records:", suscriptions);
 
-  if (fileRecords.length > 0) {
-    await ctx.store.insert(fileRecords);
-  }
-  if (userRecords.length > 0) {
-    await ctx.store.insert(userRecords);
-  }
 
-  console.log("Data processing completed.");
+    if (fileRecords.length > 0) {
+        await ctx.store.insert(fileRecords);
+    }
+    if (userRecords.length > 0) {
+        await ctx.store.insert(userRecords);
+    }
+
+    if (suscriptions.length > 0) {
+        await ctx.store.insert(suscriptions);
+    }
+
+    console.log("Data processing completed.");
 });
 
 console.log("After calling run function...");
@@ -302,137 +324,137 @@ const typeDefs = gql`
 `;
 
 const resolvers = {
-  Query: {
-    getAllFiles: async () => {
-      const connection = getConnection();
-      const fileRepository = connection.getRepository(File);
-      return await fileRepository.find();
+    Query: {
+        getAllFiles: async () => {
+            const connection = getConnection();
+            const fileRepository = connection.getRepository(File);
+            return await fileRepository.find();
+        },
+        getFile: async (_: any, { file_id }: { file_id: string }) => {
+            const connection = getConnection();
+            const fileRepository = connection.getRepository(File);
+            return await fileRepository.findOne({ where: { file_id } });
+        },
+        getAllUsers: async () => {
+            const connection = getConnection();
+            const userRepository = connection.getRepository(User);
+            return await userRepository.find();
+        },
+        getUser: async (_: any, { user_solana }: { user_solana: string }) => {
+            const connection = getConnection();
+            const userRepository = connection.getRepository(User);
+            return await userRepository.findOne({ where: { user_solana } });
+        },
+        getUserSubscriptionByWallet: async (
+            _: any,
+            { walletAddress }: { walletAddress: string }
+        ) => {
+            return {
+                id: "test-id",
+                timestamp: 199,
+            };
+        },
+        getFileByCid: async (_: any, { cid }: { cid: string }) => {
+            const connection = getConnection();
+            const fileRepository = connection.getRepository(File);
+            return await fileRepository.findOne({ where: { cid } });
+        },
+        getFilesByFromAndTo: async (
+            _: any,
+            { from, to }: { from?: string; to?: string }
+        ) => {
+            const connection = getConnection();
+            const fileRepository = connection.getRepository(File);
+            let whereCondition = {};
+            if (from && to) {
+                whereCondition = { from, to };
+            } else if (from) {
+                whereCondition = { from };
+            } else {
+                // all registry with "to" address
+                // will have the same address as from
+                // when the file is uploading to its own drive
+                whereCondition = { to, from: Not(to) };
+            }
+            return await fileRepository.find({ where: whereCondition });
+        },
+        manualSyncFileCreation: async (
+            _: any,
+            {
+                file_id,
+                name,
+                weight,
+                file_parent_id,
+                cid,
+                from,
+                to,
+                typ,
+            }: {
+                file_id?: string;
+                name?: string;
+                weight?: number;
+                file_parent_id?: string;
+                cid?: string;
+                typ?: string;
+                from?: string;
+                to?: string;
+            }
+        ) => {
+            const connection = getConnection();
+            const fileRepository = connection.getRepository(File);
+            await fileRepository.insert({
+                file_id,
+                name,
+                weight,
+                file_parent_id,
+                cid,
+                from,
+                to,
+                typ,
+                slot: 0,
+                timestamp: new Date(),
+            });
+            return { result: true };
+        },
+        manualSyncUserCreation: async (
+            _: any,
+            {
+                user_solana,
+                did_public_address,
+            }: {
+                user_solana?: string;
+                did_public_address?: string;
+            }
+        ) => {
+            const connection = getConnection();
+            const userRepository = connection.getRepository(User);
+            await userRepository.insert({
+                user_solana,
+                did_public_address,
+                slot: 0,
+            });
+            return { result: true };
+        },
     },
-    getFile: async (_: any, { file_id }: { file_id: string }) => {
-      const connection = getConnection();
-      const fileRepository = connection.getRepository(File);
-      return await fileRepository.findOne({ where: { file_id } });
-    },
-    getAllUsers: async () => {
-      const connection = getConnection();
-      const userRepository = connection.getRepository(User);
-      return await userRepository.find();
-    },
-    getUser: async (_: any, { user_solana }: { user_solana: string }) => {
-      const connection = getConnection();
-      const userRepository = connection.getRepository(User);
-      return await userRepository.findOne({ where: { user_solana } });
-    },
-    getUserSubscriptionByWallet: async (
-      _: any,
-      { walletAddress }: { walletAddress: string }
-    ) => {
-      return {
-        id: "test-id",
-        timestamp: 199,
-      };
-    },
-    getFileByCid: async (_: any, { cid }: { cid: string }) => {
-      const connection = getConnection();
-      const fileRepository = connection.getRepository(File);
-      return await fileRepository.findOne({ where: { cid } });
-    },
-    getFilesByFromAndTo: async (
-      _: any,
-      { from, to }: { from?: string; to?: string }
-    ) => {
-      const connection = getConnection();
-      const fileRepository = connection.getRepository(File);
-      let whereCondition = {};
-      if (from && to) {
-        whereCondition = { from, to };
-      } else if (from) {
-        whereCondition = { from };
-      } else {
-        // all registry with "to" address
-        // will have the same address as from
-        // when the file is uploading to its own drive
-        whereCondition = { to, from: Not(to) };
-      }
-      return await fileRepository.find({ where: whereCondition });
-    },
-    manualSyncFileCreation: async (
-      _: any,
-      {
-        file_id,
-        name,
-        weight,
-        file_parent_id,
-        cid,
-        from,
-        to,
-        typ,
-      }: {
-        file_id?: string;
-        name?: string;
-        weight?: number;
-        file_parent_id?: string;
-        cid?: string;
-        typ?: string;
-        from?: string;
-        to?: string;
-      }
-    ) => {
-      const connection = getConnection();
-      const fileRepository = connection.getRepository(File);
-      await fileRepository.insert({
-        file_id,
-        name,
-        weight,
-        file_parent_id,
-        cid,
-        from,
-        to,
-        typ,
-        slot: 0,
-        timestamp: new Date(),
-      });
-      return { result: true };
-    },
-    manualSyncUserCreation: async (
-      _: any,
-      {
-        user_solana,
-        did_public_address,
-      }: {
-        user_solana?: string;
-        did_public_address?: string;
-      }
-    ) => {
-      const connection = getConnection();
-      const userRepository = connection.getRepository(User);
-      await userRepository.insert({
-        user_solana,
-        did_public_address,
-        slot: 0,
-      });
-      return { result: true };
-    },
-  },
 };
 
 async function startServer() {
-  await createConnection({
-    type: "postgres",
-    host: process.env.DB_HOST || "localhost",
-    port: parseInt(process.env.DB_PORT || "5432", 10),
-    username: process.env.DB_USER,
-    password: process.env.DB_PASS,
-    database: process.env.DB_NAME,
-    entities: [File, User],
-    synchronize: true,
-    logging: false,
-  });
+    await createConnection({
+        type: "postgres",
+        host: process.env.DB_HOST || "localhost",
+        port: parseInt(process.env.DB_PORT || "5432", 10),
+        username: process.env.DB_USER,
+        password: process.env.DB_PASS,
+        database: process.env.DB_NAME,
+        entities: [File, User, Suscription],
+        synchronize: true,
+        logging: false,
+    });
 
-  const server = new ApolloServer({ typeDefs, resolvers });
-  server.listen().then(({ url }) => {
-    console.log(`🚀 Server ready at ${url}`);
-  });
+    const server = new ApolloServer({ typeDefs, resolvers });
+    server.listen().then(({ url }) => {
+        console.log(`🚀 Server ready at ${url}`);
+    });
 }
 
 startServer().catch((error) => console.error("Error starting server:", error));
