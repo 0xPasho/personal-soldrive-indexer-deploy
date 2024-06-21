@@ -48,3 +48,13 @@ curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -
 ## Get files by from and to
 curl -X POST http://localhost:4000/graphql -H "Content-Type: application/json" -d '{"query": "{ getFilesByFromAndTo(from: \"your_from\", to: \"your_to\") { id slot timestamp file_id name weight file_parent_id cid typ } }"}'
 ```curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+
+
+##GET users by like did _public_address
+
+curl -X POST http://localhost:4000/graphql \
+-H "Content-Type: application/json" \
+-d '{"query": "query searchUsernames($query: String!, $limit: Int) { searchUsernames(query: $query, limit: $limit) { id did_public_address } }", "variables": { "query": "Q", "limit": 5 }}'
+
+
+
