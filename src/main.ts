@@ -3,16 +3,50 @@ import { augmentBlock } from "@subsquid/solana-objects";
 import { DataSourceBuilder, SolanaRpcClient } from "@subsquid/solana-stream";
 import { TypeormDatabase } from "@subsquid/typeorm-store";
 import { ApolloServer, gql } from "apollo-server";
-import { Not, createConnection, getConnection } from "typeorm";
+import { Like, Not, createConnection, getConnection } from "typeorm";
 import { File } from "./model/file.model";
 import { User } from "./model/user.model";
-import { Suscription } from "./model/suscription.model";
+import { Subscription } from "./model/subscription.model";
+import axios from 'axios';
+import FormData from 'form-data';
+
+require('dotenv').config();
+
+// IPFS Client Configuration
+const projectId = process.env.IPFS_PROJECT_ID;
+const projectSecret = process.env.IPFS_PROJECT_SECRET;
+const auth = "Basic " + Buffer.from(projectId + ":" + projectSecret).toString("base64");
+
+
+
+async function uploadToIPFS(data: string | Blob) {
+    const url = 'https://ipfs.infura.io:5001/api/v0/add';
+    const form = new FormData();
+    form.append('file', data);
+
+    const headers = {
+        authorization: auth,
+        ...form.getHeaders()
+    };
+
+    try {
+        const response = await axios.post(url, form, {
+            headers: headers,
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+        });
+
+        console.log('IPFS Hash:', response.data.Hash);
+        return response.data.Hash;
+    } catch (error) {
+        console.error('Error uploading to IPFS:');
+    }
+}
 
 
 const FILE_PROGRAM_ID = "4v3uT7y6RHLCJLSwAjWg59tJFhZG1rpa6Q9u6NsZrgUu";
 const USER_PROGRAM_ID = "6QnLoMCJV2quAy4GuEsDzH7ubN5vW9NN9zwVNgXNEhYo";
-const SUSCRIBE_ID = "DQozU1hdPhGKPPL3dWonTmfe6w6uydqudrbspmkpfaVW";
-
+const SUBSCRIBE_ID = "DQozU1hdPhGKPPL3dWonTmfe6w6uydqudrbspmkpfaVW";
 
 const dataSource = new DataSourceBuilder()
     .setRpc(
@@ -21,12 +55,12 @@ const dataSource = new DataSourceBuilder()
             : {
                 client: new SolanaRpcClient({
                     url: process.env.SOLANA_NODE,
-                    rateLimit: 10, // requests per sec
+                    rateLimit: 5, // requests per sec
                 }),
                 strideConcurrency: 1,
             }
     )
-    .setBlockRange({ from: 292_878_498 })
+    .setBlockRange({ from: 295_283_607 })
     .setFields({
         block: {
             slot: true,
@@ -69,7 +103,7 @@ const dataSource = new DataSourceBuilder()
     })
     .addInstruction({
         where: {
-            programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID, SUSCRIBE_ID],
+            programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID, SUBSCRIBE_ID],
         },
         include: {
             transaction: true,
@@ -77,7 +111,7 @@ const dataSource = new DataSourceBuilder()
     })
     .addLog({
         where: {
-            programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID, SUSCRIBE_ID],
+            programId: [FILE_PROGRAM_ID, USER_PROGRAM_ID, SUBSCRIBE_ID],
         },
         include: {
             instruction: false,
@@ -176,7 +210,7 @@ run(dataSource, database, async (ctx) => {
     let blocks = ctx.blocks.map(augmentBlock);
     let fileRecords: File[] = [];
     let userRecords: User[] = [];
-    let suscriptions: Suscription[] = [];
+    let subscriptions: Subscription[] = [];
 
 
     console.log(`Fetched ${blocks.length} blocks`);
@@ -214,27 +248,41 @@ run(dataSource, database, async (ctx) => {
                     // }
                 } else if (log.programId === USER_PROGRAM_ID) {
                     if (metadata.user_solana && metadata.did_public_address) {
-                        const userAlreadyCreated = await isUserAlreadyInserted(
-                            metadata.did_public_address
-                        );
+                        const userAlreadyCreated = await isUserAlreadyInserted(metadata.did_public_address);
                         if (!userAlreadyCreated) {
-                            const user = new User();
-                            user.user_solana = metadata.user_solana;
-                            user.slot = block.header.slot;
-                            user.did_public_address = metadata.did_public_address;
-                            userRecords.push(user);
+                            // Upload user data to IPFS
+                            const userData = {
+                                did_public_address: metadata.did_public_address,
+                            };
+                            console.log('### INSERTING IPFS hash:');
+
+
+                            try {
+                                const ipfsHash= await  uploadToIPFS(JSON.stringify(userData));
+                                console.log('IPFS hash:', ipfsHash);
+
+                                const user = new User();
+                                user.user_solana = metadata.user_solana;
+                                user.slot = block.header.slot;
+                                user.did_public_address = metadata.did_public_address;
+                                user.ipfs_hash = ipfsHash;
+                                userRecords.push(user);
+                            } catch (error) {
+                                console.error('Error uploading to IPFS:', error);
+                            }
                         }
                     } else {
                         console.log("Incomplete User metadata, skipping record:", metadata);
                     }
-                } else if (log.programId === SUSCRIBE_ID ) {
+                } else if (log.programId === SUBSCRIBE_ID) {
 
-                    if(metadata.Receiver === '6aCLHeb1RS5t1LXNLnvFwP5F4B44ygaUv5PAsE7QEQ57' )   {
-                        const suscription = new Suscription();
+                    if (metadata.Receiver === '6aCLHeb1RS5t1LXNLnvFwP5F4B44ygaUv5PAsE7QEQ57') {
+                        // TODO CHECK: CORRECT AMOUNT and correct TOKEN, here we are only checking that we received the token
+                        const suscription = new Subscription();
                         suscription.user = metadata.Depositor;
                         suscription.timestamp = new Date(metadata.Timestamp * 1000);
-                        suscriptions.push(suscription);
-                    }                 
+                        subscriptions.push(suscription);
+                    }
 
                 }
 
@@ -248,7 +296,7 @@ run(dataSource, database, async (ctx) => {
 
     console.log("File Records:", fileRecords);
     console.log("User Records:", userRecords);
-    console.log("Suscriptions Records:", suscriptions);
+    console.log("subscriptions Records:", subscriptions);
 
 
     if (fileRecords.length > 0) {
@@ -258,8 +306,8 @@ run(dataSource, database, async (ctx) => {
         await ctx.store.insert(userRecords);
     }
 
-    if (suscriptions.length > 0) {
-        await ctx.store.insert(suscriptions);
+    if (subscriptions.length > 0) {
+        await ctx.store.insert(subscriptions);
     }
 
     console.log("Data processing completed.");
@@ -287,6 +335,7 @@ const typeDefs = gql`
     id: ID!
     user_solana: String!
     did_public_address: String!
+    ipfs_hash: String
   }
 
   type UserSubscription {
@@ -306,6 +355,10 @@ const typeDefs = gql`
     getUserSubscriptionByWallet(walletAddress: String!): UserSubscription
     getFileByCid(cid: String!): File
     getFilesByFromAndTo(from: String, to: String): [File]
+    searchUsernames(query: String!, limit: Int): [User]
+  }
+
+  type Mutation {
     manualSyncFileCreation(
       file_id: String
       name: String
@@ -378,6 +431,16 @@ const resolvers = {
             }
             return await fileRepository.find({ where: whereCondition });
         },
+        searchUsernames: async (_: any, { query, limit }: { query: string; limit?: number }) => {
+            const connection = getConnection();
+            const userRepository = connection.getRepository(User);
+            return await userRepository.find({
+                where: { did_public_address: Like(`%${query}%`) },
+                take: limit || 5,
+            });
+        },
+    },
+    Mutation: {
         manualSyncFileCreation: async (
             _: any,
             {
@@ -428,9 +491,17 @@ const resolvers = {
         ) => {
             const connection = getConnection();
             const userRepository = connection.getRepository(User);
+
+            // Upload user data to IPFS
+            const userData = {
+                did_public_address,
+            };
+            const { path: ipfsHash } = await uploadToIPFS(JSON.stringify(userData));
+
             await userRepository.insert({
                 user_solana,
                 did_public_address,
+                ipfs_hash: ipfsHash,
                 slot: 0,
             });
             return { result: true };
@@ -446,7 +517,7 @@ async function startServer() {
         username: process.env.DB_USER,
         password: process.env.DB_PASS,
         database: process.env.DB_NAME,
-        entities: [File, User, Suscription],
+        entities: [File, User, Subscription],
         synchronize: true,
         logging: false,
     });

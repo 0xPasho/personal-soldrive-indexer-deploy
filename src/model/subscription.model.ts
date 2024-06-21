@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
 @Entity()
-export class Suscription {
+export class Subscription {
     @PrimaryGeneratedColumn('uuid')
     id!: string;
 

@@ -31,7 +31,7 @@
         }
     }
 
-    const slot = 290636096;
+    const slot = 307030183;
 
     const devnetUrl = "https://api.devnet.solana.com";
     const mainnetUrl = "https://api.mainnet-beta.solana.com";
