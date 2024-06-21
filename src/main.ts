@@ -269,6 +269,11 @@ run(dataSource, database, async (ctx) => {
                                 userRecords.push(user);
                             } catch (error) {
                                 console.error('Error uploading to IPFS:', error);
+                                const user = new User();
+                                user.user_solana = metadata.user_solana;
+                                user.slot = block.header.slot;
+                                user.did_public_address = metadata.did_public_address;
+                                user.ipfs_hash = 'Error';
                             }
                         }
                     } else {
