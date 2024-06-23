@@ -47,7 +47,7 @@ const dataSource = new DataSourceBuilder()
       : {
           client: new SolanaRpcClient({
             url: process.env.SOLANA_NODE,
-            rateLimit: 10, // requests per sec
+            rateLimit: 3, // requests per sec
           }),
           strideConcurrency: 1,
         }
