@@ -48,12 +48,13 @@ const dataSource = new DataSourceBuilder()
       : {
           client: new SolanaRpcClient({
             url: process.env.SOLANA_NODE,
-            rateLimit: 1, // requests per sec
+            rateLimit: 0.25, // requests per sec
+            capacity:1
           }),
           strideConcurrency: 1,
         }
   )
-  .setBlockRange({ from: 292_878_498 })
+  .setBlockRange({ from: 295_969_933 })
   .setFields({
     block: {
       slot: true,
@@ -197,9 +198,6 @@ async function isFileAlreadyInserted({
   return { id: foundFile?.id };
 }
 
-async function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 run(dataSource, database, async (ctx) => {
   console.log("Entered run function...");
@@ -271,7 +269,6 @@ run(dataSource, database, async (ctx) => {
         console.log("No metadata found in log.");
       }
 
-      await delay(5000); // Delay between each log processing to slow down RPC calls
     }
   }
 
