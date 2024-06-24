@@ -13,6 +13,7 @@ import FormData from "form-data";
 const FILE_PROGRAM_ID = "4v3uT7y6RHLCJLSwAjWg59tJFhZG1rpa6Q9u6NsZrgUu";
 const USER_PROGRAM_ID = "6QnLoMCJV2quAy4GuEsDzH7ubN5vW9NN9zwVNgXNEhYo";
 const SUSCRIBE_ID = "DQozU1hdPhGKPPL3dWonTmfe6w6uydqudrbspmkpfaVW";
+
 // IPFS Client Configuration
 const projectId = process.env.IPFS_PROJECT_ID;
 const projectSecret = process.env.IPFS_PROJECT_SECRET;
@@ -47,7 +48,7 @@ const dataSource = new DataSourceBuilder()
       : {
           client: new SolanaRpcClient({
             url: process.env.SOLANA_NODE,
-            rateLimit: 3, // requests per sec
+            rateLimit: 1, // requests per sec
           }),
           strideConcurrency: 1,
         }
@@ -196,6 +197,10 @@ async function isFileAlreadyInserted({
   return { id: foundFile?.id };
 }
 
+async function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 run(dataSource, database, async (ctx) => {
   console.log("Entered run function...");
 
@@ -226,17 +231,12 @@ run(dataSource, database, async (ctx) => {
         if (log.programId === FILE_PROGRAM_ID) {
           const fileAlreadyCreated = await isFileAlreadyInserted(metadata);
           if (!fileAlreadyCreated) {
-            // if (metadata.file_id && metadata.name && metadata.weight !== undefined && metadata.typ) {
             const file = new File();
             file.slot = block.header.slot;
             file.timestamp = new Date(block.header.timestamp * 1000);
             Object.assign(file, metadata);
             fileRecords.push(file);
-          } else {
           }
-          // } else {
-          //     console.log('Incomplete File metadata, skipping record:', metadata);
-          // }
         } else if (log.programId === USER_PROGRAM_ID) {
           if (metadata.user_solana && metadata.did_public_address) {
             const userAlreadyCreated = await isUserAlreadyInserted(
@@ -270,6 +270,8 @@ run(dataSource, database, async (ctx) => {
       } else {
         console.log("No metadata found in log.");
       }
+
+      await delay(5000); // Delay between each log processing to slow down RPC calls
     }
   }
 
