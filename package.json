@@ -7,6 +7,7 @@
     "start": "node lib/main.js"
   },
   "dependencies": {
+    "@solana/spl-token": "^0.4.7",
     "@solana/web3.js": "^1.91.8",
     "@subsquid/batch-processor": "^0.0.0",
     "@subsquid/borsh": "^0.1.0",

@@ -10,6 +10,10 @@ import { Subscription } from "./model/subscription.model";
 import axios from "axios";
 import FormData from "form-data";
 
+const { getTokenAssociated } = require('../src/getTokenAssociated.js');
+
+
+import { Connection, PublicKey, PublicKeyData } from '@solana/web3.js';
 const FILE_PROGRAM_ID = "4v3uT7y6RHLCJLSwAjWg59tJFhZG1rpa6Q9u6NsZrgUu";
 const USER_PROGRAM_ID = "6QnLoMCJV2quAy4GuEsDzH7ubN5vW9NN9zwVNgXNEhYo";
 const SUSCRIBE_ID = "DQozU1hdPhGKPPL3dWonTmfe6w6uydqudrbspmkpfaVW";
@@ -48,13 +52,13 @@ const dataSource = new DataSourceBuilder()
       : {
           client: new SolanaRpcClient({
             url: process.env.SOLANA_NODE,
-            rateLimit: 0.1, // requests per sec
+            rateLimit: 1, // requests per sec
             capacity: 1,
           }),
           strideConcurrency: 1,
         }
   )
-  .setBlockRange({ from: 295_969_933 })
+  .setBlockRange({ from: 296_414_394 })
   .setFields({
     block: {
       slot: true,
@@ -255,8 +259,16 @@ run(dataSource, database, async (ctx) => {
             console.log("Incomplete User metadata, skipping record:", metadata);
           }
         } else if (log.programId === SUSCRIBE_ID) {
+
+          // get main publick key of this thing 
+          const associatedTokenAccount = await getTokenAssociated(process.env.RECEIVER, process.env.TOKEN);
+
+          
+
           if (
-            metadata.Receiver === "6aCLHeb1RS5t1LXNLnvFwP5F4B44ygaUv5PAsE7QEQ57"
+            metadata.Receiver === associatedTokenAccount
+            && metadata.Token === process.env.TOKEN
+            && metadata.Amount === process.env.AMOUNT
           ) {
             const suscription = new Subscription();
             suscription.user = metadata.Depositor;
@@ -269,6 +281,7 @@ run(dataSource, database, async (ctx) => {
       }
     }
   }
+  
 
   console.log("Inserting metadata into the database...");
 
@@ -503,6 +516,7 @@ const resolvers = {
     },
   },
 };
+
 
 async function startServer() {
   await createConnection({
