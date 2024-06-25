@@ -48,8 +48,8 @@ const dataSource = new DataSourceBuilder()
       : {
           client: new SolanaRpcClient({
             url: process.env.SOLANA_NODE,
-            rateLimit: 0.25, // requests per sec
-            capacity:1
+            rateLimit: 0.1, // requests per sec
+            capacity: 1,
           }),
           strideConcurrency: 1,
         }
@@ -198,7 +198,6 @@ async function isFileAlreadyInserted({
   return { id: foundFile?.id };
 }
 
-
 run(dataSource, database, async (ctx) => {
   console.log("Entered run function...");
 
@@ -268,7 +267,6 @@ run(dataSource, database, async (ctx) => {
       } else {
         console.log("No metadata found in log.");
       }
-
     }
   }
 
@@ -320,7 +318,7 @@ const typeDefs = gql`
 
   type UserSubscription {
     id: ID!
-    timestamp: Int!
+    timestamp: String!
   }
 
   type MutationResult {
@@ -352,6 +350,7 @@ const typeDefs = gql`
       username: String
       did_public_key: String
     ): MutationResult
+    manualSyncSubscriptionCreation(walletAddress: String!): MutationResult
   }
 `;
 
@@ -392,10 +391,11 @@ const resolvers = {
       _: any,
       { walletAddress }: { walletAddress: string }
     ) => {
-      return {
-        id: "test-id",
-        timestamp: 199,
-      };
+      const connection = getConnection();
+      const subscriptionRepository = connection.getRepository(Subscription);
+      return await subscriptionRepository.findOne({
+        where: { user: walletAddress },
+      });
     },
     getFileByCid: async (_: any, { cid }: { cid: string }) => {
       const connection = getConnection();
@@ -475,12 +475,29 @@ const resolvers = {
     ) => {
       const connection = getConnection();
       const userRepository = connection.getRepository(User);
+
       await userRepository.insert({
         user_solana,
         did_public_address,
         slot: 0,
         username,
         did_public_key,
+      });
+      return { result: true };
+    },
+    manualSyncSubscriptionCreation: async (
+      _: any,
+      {
+        walletAddress,
+      }: {
+        walletAddress: string;
+      }
+    ) => {
+      const connection = getConnection();
+      const subscriptionRepository = connection.getRepository(Subscription);
+      await subscriptionRepository.insert({
+        user: walletAddress,
+        timestamp: new Date(),
       });
       return { result: true };
     },
