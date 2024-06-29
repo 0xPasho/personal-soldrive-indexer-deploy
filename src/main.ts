@@ -1,4 +1,4 @@
-import { run } from "@subsquid/batch-processor";
+import { run } from "./run"
 import { augmentBlock } from "@subsquid/solana-objects";
 import { DataSourceBuilder, SolanaRpcClient } from "@subsquid/solana-stream";
 import { TypeormDatabase } from "@subsquid/typeorm-store";
@@ -54,6 +54,8 @@ const dataSource = new DataSourceBuilder()
             url: process.env.SOLANA_NODE,
             rateLimit: 1, // requests per sec
             capacity: 1,
+            retryAttempts:100,
+            retrySchedule:[100,1000,2000,3000,3600000]
           }),
           strideConcurrency: 1,
         }
